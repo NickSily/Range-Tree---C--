@@ -75,9 +75,9 @@ template<typename T, size_t K>
 RangeTree<T, K>::RangeTree(const std::vector<std::vector<T>>& points, size_t dim) : dimension(dim) {
     if (points.empty()) return;
     
-    // Validate input points
+    // Validate input points - ensure points have at least K dimensions
     for (const auto& point : points) {
-        if (point.size() != K) {
+        if (point.size() < K) {
             throw std::invalid_argument("Point dimension does not match tree dimension");
         }
     }
@@ -194,7 +194,7 @@ template<typename T, size_t K>
 std::vector<std::vector<T>> RangeTree<T, K>::rangeSearch(
     const std::vector<T>& low, const std::vector<T>& high) const {
     
-    if (low.size() != K || high.size() != K) {
+    if (low.size() < K || high.size() < K) {
         throw std::invalid_argument("Range dimensions do not match tree dimension");
     }
     
@@ -209,7 +209,7 @@ std::vector<std::vector<T>> RangeTree<T, K>::rangeSearch(
 
 template<typename T, size_t K>
 bool RangeTree<T, K>::search(const std::vector<T>& point) const {
-    if (point.size() != K) {
+    if (point.size() < K) {
         throw std::invalid_argument("Point dimension does not match tree dimension");
     }
     

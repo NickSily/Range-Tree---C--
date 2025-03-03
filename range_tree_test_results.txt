@@ -17,3 +17,27 @@ Running test_range_boundary_conditions...
 PASSED
 
 Running test_3d_range_tree...
+PASSED
+
+Running test_dimension_validation...
+PASSED
+
+Running test_different_data_types...
+PASSED
+
+Running test_large_dataset...
+PASSED
+
+Running test_invalid_input...
+PASSED
+
+Running test_inverted_ranges...
+PASSED
+
+
+Test Summary
+============
+Total Tests: 11
+Passed Tests: 11
+Failed Tests: 0
+Passed Assertions: 155
