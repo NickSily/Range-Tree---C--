@@ -4,7 +4,9 @@
 #include <string>
 #include <cassert>
 #include <cmath>
-#include "../src/KdTree.h"
+#include <set>
+#include <algorithm>
+#include "../src/RangeTree.h"
 
 // Simple test framework
 #define TEST(name) void name()
@@ -63,230 +65,339 @@ bool vectorContainsPoint(const std::vector<std::vector<T>>& vectors, const std::
     return false;
 }
 
-// Tests for 2D KD Tree of ints
-TEST(test_empty_tree) {
-    KdTree<int, 2> tree;
-    
-    ASSERT_FALSE(tree.search({3, 6}));
-    
-    try {
-        tree.nearestNeighbor({3, 6});
-        test_file << "TEST FAILED: " << __func__ << " Line " << __LINE__ << ": Expected exception for nearestNeighbor on empty tree" << std::endl;
-        failed_tests++;
-        return;
-    } catch (const std::runtime_error&) {
-        passed_assertions++;
+// Count distinct points in a result set (handling potential duplicates)
+template<typename T>
+size_t countDistinctPoints(const std::vector<std::vector<T>>& points) {
+    std::set<std::vector<T>> distinct_points;
+    for (const auto& point : points) {
+        distinct_points.insert(point);
     }
-    
-    auto rangeResult = tree.rangeSearch({0, 0}, {10, 10});
-    ASSERT_EQUAL(rangeResult.size(), 0);
+    return distinct_points.size();
 }
 
-TEST(test_insert_and_search) {
-    KdTree<int, 2> tree;
+// Manually check if a point is in a range
+template<typename T>
+bool isPointInRange(const std::vector<T>& point, const std::vector<T>& low, const std::vector<T>& high) {
+    if (point.size() != low.size() || point.size() != high.size()) return false;
     
-    tree.insert({3, 6});
-    tree.insert({17, 15});
-    tree.insert({13, 15});
-    tree.insert({6, 12});
+    for (size_t i = 0; i < point.size(); ++i) {
+        if (point[i] < low[i] || point[i] > high[i]) return false;
+    }
+    return true;
+}
+
+// Tests for an empty Range Tree
+TEST(test_empty_tree) {
+    std::vector<std::vector<int>> empty_points;
+    RangeTree<int, 2> tree(empty_points);
     
+    // Test range search on empty tree
+    auto results = tree.rangeSearch({0, 0}, {10, 10});
+    ASSERT_EQUAL(results.size(), 0);
+    
+    // Test point search on empty tree
+    ASSERT_FALSE(tree.search({3, 6}));
+}
+
+// Tests for 1D specialization of Range Tree
+TEST(test_1d_range_tree) {
+    std::vector<std::vector<int>> points_1d = {
+        {3}, {7}, {1}, {9}, {5}, {2}, {8}, {4}, {6}
+    };
+    
+    RangeTree<int, 1> tree(points_1d);
+    
+    // Test range queries
+    auto results = tree.rangeSearch({3}, {7});
+    ASSERT_EQUAL(results.size(), 5);  // Should find points 3,4,5,6,7
+    
+    results = tree.rangeSearch({1}, {1});
+    ASSERT_EQUAL(results.size(), 1);  // Should find point 1
+    
+    results = tree.rangeSearch({0}, {0});
+    ASSERT_EQUAL(results.size(), 0);  // Should find no points
+    
+    // Test point search
+    ASSERT_TRUE(tree.search({5}));
+    ASSERT_FALSE(tree.search({10}));
+}
+
+// Tests for building and basic functions of 2D Range Tree
+TEST(test_2d_range_tree_basic) {
+    std::vector<std::vector<int>> points_2d = {
+        {3, 6}, {17, 15}, {13, 15}, {6, 12}, {9, 1}, {2, 7}, {10, 19}
+    };
+    
+    RangeTree<int, 2> tree(points_2d);
+    
+    // Test point search
     ASSERT_TRUE(tree.search({3, 6}));
     ASSERT_TRUE(tree.search({17, 15}));
-    ASSERT_TRUE(tree.search({13, 15}));
-    ASSERT_TRUE(tree.search({6, 12}));
+    ASSERT_TRUE(tree.search({9, 1}));
     
-    ASSERT_FALSE(tree.search({4, 7}));
-    ASSERT_FALSE(tree.search({18, 14}));
-    ASSERT_FALSE(tree.search({10, 12}));
+    ASSERT_FALSE(tree.search({4, 6}));
+    ASSERT_FALSE(tree.search({17, 16}));
+    ASSERT_FALSE(tree.search({20, 20}));
+    
+    // Test exact point range search
+    auto results = tree.rangeSearch({3, 6}, {3, 6});
+    ASSERT_EQUAL(results.size(), 1);
+    ASSERT_TRUE(vectorContainsPoint(results, {3, 6}));
+    
+    // Test non-existent point range search
+    results = tree.rangeSearch({4, 6}, {4, 6});
+    ASSERT_EQUAL(results.size(), 0);
 }
 
-TEST(test_nearest_neighbor_exact_match) {
-    KdTree<int, 2> tree;
+// Test for range queries in 2D that should return multiple points
+TEST(test_2d_range_queries) {
+    std::vector<std::vector<int>> points_2d = {
+        {3, 6}, {17, 15}, {13, 15}, {6, 12}, {9, 1}, {2, 7}, {10, 19},
+        {14, 11}, {8, 7}, {15, 5}, {4, 8}, {11, 9}, {16, 3}, {5, 14}
+    };
     
-    tree.insert({3, 6});
-    tree.insert({17, 15});
-    tree.insert({13, 15});
-    tree.insert({6, 12});
+    RangeTree<int, 2> tree(points_2d);
     
-    std::vector<int> result = tree.nearestNeighbor({3, 6});
-    ASSERT_TRUE(vectorsEqual(result, {3, 6}));
+    // Test mid-range query
+    auto results = tree.rangeSearch({5, 5}, {15, 15});
     
-    result = tree.nearestNeighbor({17, 15});
-    ASSERT_TRUE(vectorsEqual(result, {17, 15}));
-}
-
-TEST(test_nearest_neighbor_approximate) {
-    KdTree<int, 2> tree;
-    
-    tree.insert({3, 6});   // Distance to (5,5): sqrt(13) = 3.61
-    tree.insert({17, 15}); // Distance to (5,5): sqrt(544) = 23.33
-    tree.insert({13, 15}); // Distance to (5,5): sqrt(328) = 18.11
-    tree.insert({6, 12});  // Distance to (5,5): sqrt(50) = 7.07
-    tree.insert({9, 1});   // Distance to (5,5): sqrt(32) = 5.66
-    
-    std::vector<int> result = tree.nearestNeighbor({5, 5});
-    ASSERT_TRUE(vectorsEqual(result, {3, 6})); // Closest point
-    
-    result = tree.nearestNeighbor({14, 14});
-    ASSERT_TRUE(vectorsEqual(result, {13, 15})); // Closest point
-}
-
-TEST(test_range_search) {
-    KdTree<int, 2> tree;
-    
-    tree.insert({3, 6});
-    tree.insert({17, 15});
-    tree.insert({13, 15});
-    tree.insert({6, 12});
-    tree.insert({9, 1});
-    tree.insert({2, 7});
-    tree.insert({10, 19});
-    
-    // Range that includes points
-    auto result = tree.rangeSearch({5, 5}, {15, 15});
-    ASSERT_EQUAL(result.size(), 2);
-    ASSERT_TRUE(vectorContainsPoint(result, {6, 12}));
-    ASSERT_TRUE(vectorContainsPoint(result, {13, 15}));
-    
-    // Range that includes all points
-    result = tree.rangeSearch({0, 0}, {20, 20});
-    ASSERT_EQUAL(result.size(), 7);
-    
-    // Range that includes no points
-    result = tree.rangeSearch({4, 4}, {5, 5});
-    ASSERT_EQUAL(result.size(), 0);
-    
-    // Range that includes boundary cases
-    result = tree.rangeSearch({3, 6}, {3, 6});
-    ASSERT_EQUAL(result.size(), 1);
-    ASSERT_TRUE(vectorContainsPoint(result, {3, 6}));
-}
-
-TEST(test_higher_dimensions) {
-    KdTree<double, 3> tree;
-    
-    tree.insert({1.0, 2.0, 3.0});
-    tree.insert({4.0, 5.0, 6.0});
-    tree.insert({7.0, 8.0, 9.0});
-    
-    ASSERT_TRUE(tree.search({1.0, 2.0, 3.0}));
-    ASSERT_TRUE(tree.search({4.0, 5.0, 6.0}));
-    ASSERT_TRUE(tree.search({7.0, 8.0, 9.0}));
-    
-    ASSERT_FALSE(tree.search({1.1, 2.0, 3.0}));
-    
-    auto nn = tree.nearestNeighbor({3.9, 5.1, 5.8});
-    ASSERT_TRUE(vectorsEqual(nn, {4.0, 5.0, 6.0}));
-    
-    auto range = tree.rangeSearch({0.0, 0.0, 0.0}, {5.0, 6.0, 7.0});
-    ASSERT_EQUAL(range.size(), 2);
-}
-
-TEST(test_different_data_types) {
-    KdTree<float, 2> tree;
-    
-    tree.insert({3.5f, 6.7f});
-    tree.insert({17.2f, 15.3f});
-    
-    ASSERT_TRUE(tree.search({3.5f, 6.7f}));
-    ASSERT_TRUE(tree.search({17.2f, 15.3f}));
-    
-    ASSERT_FALSE(tree.search({3.51f, 6.7f}));
-    
-    auto nn = tree.nearestNeighbor({10.0f, 10.0f});
-    ASSERT_TRUE(vectorsEqual(nn, {17.2f, 15.3f}) || vectorsEqual(nn, {3.5f, 6.7f})); // Could be either based on implementation
-    
-    auto range = tree.rangeSearch({3.0f, 6.0f}, {4.0f, 7.0f});
-    ASSERT_EQUAL(range.size(), 1);
-}
-
-TEST(test_dimension_validation) {
-    KdTree<int, 2> tree;
-    
-    try {
-        tree.insert({1, 2, 3}); // Wrong dimension
-        test_file << "TEST FAILED: " << __func__ << " Line " << __LINE__ << ": Expected exception for incorrect dimensions" << std::endl;
-        failed_tests++;
-        return;
-    } catch (const std::invalid_argument&) {
-        passed_assertions++;
-    }
-    
-    try {
-        tree.search({1}); // Wrong dimension
-        test_file << "TEST FAILED: " << __func__ << " Line " << __LINE__ << ": Expected exception for incorrect dimensions" << std::endl;
-        failed_tests++;
-        return;
-    } catch (const std::invalid_argument&) {
-        passed_assertions++;
-    }
-    
-    try {
-        tree.nearestNeighbor({1, 2, 3}); // Wrong dimension
-        test_file << "TEST FAILED: " << __func__ << " Line " << __LINE__ << ": Expected exception for incorrect dimensions" << std::endl;
-        failed_tests++;
-        return;
-    } catch (const std::invalid_argument&) {
-        passed_assertions++;
-    }
-    
-    try {
-        tree.rangeSearch({1}, {2}); // Wrong dimension
-        test_file << "TEST FAILED: " << __func__ << " Line " << __LINE__ << ": Expected exception for incorrect dimensions" << std::endl;
-        failed_tests++;
-        return;
-    } catch (const std::invalid_argument&) {
-        passed_assertions++;
-    }
-}
-
-TEST(test_large_dataset) {
-    KdTree<int, 2> tree;
-    
-    // Insert 100 points in a grid pattern
-    for (int i = 0; i < 10; i++) {
-        for (int j = 0; j < 10; j++) {
-            tree.insert({i, j});
+    // Manual verification of which points should be in this range
+    std::vector<std::vector<int>> expected_points;
+    for (const auto& point : points_2d) {
+        if (isPointInRange(point, {5, 5}, {15, 15})) {
+            expected_points.push_back(point);
         }
     }
     
-    // Verify all points are found
+    ASSERT_EQUAL(countDistinctPoints(results), countDistinctPoints(expected_points));
+    
+    // Verify each expected point is in the results
+    for (const auto& point : expected_points) {
+        ASSERT_TRUE(vectorContainsPoint(results, point));
+    }
+    
+    // Test full range query
+    results = tree.rangeSearch({0, 0}, {20, 20});
+    ASSERT_EQUAL(results.size(), points_2d.size());
+    
+    // Test empty range query
+    results = tree.rangeSearch({100, 100}, {200, 200});
+    ASSERT_EQUAL(results.size(), 0);
+}
+
+// Tests for boundary conditions in range queries
+TEST(test_range_boundary_conditions) {
+    std::vector<std::vector<int>> points_2d = {
+        {5, 5}, {10, 10}, {15, 15}
+    };
+    
+    RangeTree<int, 2> tree(points_2d);
+    
+    // Test inclusive boundaries
+    auto results = tree.rangeSearch({5, 5}, {15, 15});
+    ASSERT_EQUAL(results.size(), 3);
+    
+    // Test exclusive lower boundary
+    results = tree.rangeSearch({6, 5}, {15, 15});
+    ASSERT_EQUAL(results.size(), 2);
+    ASSERT_FALSE(vectorContainsPoint(results, {5, 5}));
+    
+    // Test exclusive upper boundary
+    results = tree.rangeSearch({5, 5}, {14, 15});
+    ASSERT_EQUAL(results.size(), 2);
+    ASSERT_FALSE(vectorContainsPoint(results, {15, 15}));
+    
+    // Test boundary that's between points
+    results = tree.rangeSearch({6, 6}, {14, 14});
+    ASSERT_EQUAL(results.size(), 1);
+    ASSERT_TRUE(vectorContainsPoint(results, {10, 10}));
+}
+
+// Tests for 3D Range Tree
+TEST(test_3d_range_tree) {
+    std::vector<std::vector<int>> points_3d = {
+        {3, 6, 2}, {17, 15, 9}, {13, 15, 5}, {6, 12, 1}, {9, 1, 7},
+        {2, 7, 3}, {10, 19, 8}, {14, 11, 4}, {8, 7, 6}, {15, 5, 10}
+    };
+    
+    RangeTree<int, 3> tree(points_3d);
+    
+    // Test point search
+    ASSERT_TRUE(tree.search({3, 6, 2}));
+    ASSERT_TRUE(tree.search({15, 5, 10}));
+    ASSERT_FALSE(tree.search({3, 6, 3}));
+    
+    // Test range query
+    auto results = tree.rangeSearch({5, 5, 3}, {15, 15, 8});
+    
+    // Manual verification
+    std::vector<std::vector<int>> expected_points;
+    for (const auto& point : points_3d) {
+        if (isPointInRange(point, {5, 5, 3}, {15, 15, 8})) {
+            expected_points.push_back(point);
+        }
+    }
+    
+    ASSERT_EQUAL(countDistinctPoints(results), countDistinctPoints(expected_points));
+    
+    // Verify each expected point is in the results
+    for (const auto& point : expected_points) {
+        ASSERT_TRUE(vectorContainsPoint(results, point));
+    }
+}
+
+// Tests for dimension validation
+TEST(test_dimension_validation) {
+    std::vector<std::vector<int>> points_2d = {
+        {3, 6}, {17, 15}, {13, 15}
+    };
+    
+    RangeTree<int, 2> tree(points_2d);
+    
+    // Test wrong dimension in search
+    try {
+        tree.search({3});
+        test_file << "TEST FAILED: " << __func__ << " Line " << __LINE__ << ": Expected exception for incorrect dimensions" << std::endl;
+        failed_tests++;
+        return;
+    } catch (const std::invalid_argument&) {
+        passed_assertions++;
+    }
+    
+    try {
+        tree.search({3, 6, 2});
+        test_file << "TEST FAILED: " << __func__ << " Line " << __LINE__ << ": Expected exception for incorrect dimensions" << std::endl;
+        failed_tests++;
+        return;
+    } catch (const std::invalid_argument&) {
+        passed_assertions++;
+    }
+    
+    // Test wrong dimension in range search
+    try {
+        tree.rangeSearch({3}, {6});
+        test_file << "TEST FAILED: " << __func__ << " Line " << __LINE__ << ": Expected exception for incorrect dimensions" << std::endl;
+        failed_tests++;
+        return;
+    } catch (const std::invalid_argument&) {
+        passed_assertions++;
+    }
+    
+    try {
+        tree.rangeSearch({3, 6, 2}, {6, 9, 5});
+        test_file << "TEST FAILED: " << __func__ << " Line " << __LINE__ << ": Expected exception for incorrect dimensions" << std::endl;
+        failed_tests++;
+        return;
+    } catch (const std::invalid_argument&) {
+        passed_assertions++;
+    }
+}
+
+// Tests for different data types
+TEST(test_different_data_types) {
+    std::vector<std::vector<float>> points_float = {
+        {3.5f, 6.7f}, {17.2f, 15.3f}, {13.8f, 15.1f}, {6.4f, 12.9f}
+    };
+    
+    RangeTree<float, 2> tree(points_float);
+    
+    // Test point search
+    ASSERT_TRUE(tree.search({3.5f, 6.7f}));
+    ASSERT_TRUE(tree.search({17.2f, 15.3f}));
+    ASSERT_FALSE(tree.search({3.51f, 6.7f}));
+    
+    // Test range search
+    auto results = tree.rangeSearch({3.0f, 6.0f}, {14.0f, 16.0f});
+    ASSERT_EQUAL(results.size(), 3);
+    ASSERT_TRUE(vectorContainsPoint(results, {3.5f, 6.7f}));
+    ASSERT_TRUE(vectorContainsPoint(results, {13.8f, 15.1f}));
+    ASSERT_TRUE(vectorContainsPoint(results, {6.4f, 12.9f}));
+}
+
+// Tests for large dataset
+TEST(test_large_dataset) {
+    std::vector<std::vector<int>> points_large;
+    
+    // Create 100 points in a grid pattern
+    for (int i = 0; i < 10; i++) {
+        for (int j = 0; j < 10; j++) {
+            points_large.push_back({i, j});
+        }
+    }
+    
+    RangeTree<int, 2> tree(points_large);
+    
+    // Test point search for all points
     for (int i = 0; i < 10; i++) {
         for (int j = 0; j < 10; j++) {
             ASSERT_TRUE(tree.search({i, j}));
         }
     }
     
-    // Verify nearest neighbor works correctly
-    auto nn = tree.nearestNeighbor({5, 4});
-    ASSERT_TRUE(vectorsEqual(nn, {5, 4}));
+    // Test range query for a subset of points
+    auto results = tree.rangeSearch({3, 3}, {6, 6});
+    ASSERT_EQUAL(results.size(), 16); // 4x4 grid from (3,3) to (6,6)
     
-    // Verify range search works correctly
-    auto range = tree.rangeSearch({3, 3}, {6, 6});
-    ASSERT_EQUAL(range.size(), 16); // 4x4 grid
+    // Test range query for all points
+    results = tree.rangeSearch({0, 0}, {9, 9});
+    ASSERT_EQUAL(results.size(), 100); // 10x10 grid
+}
+
+// Test for invalid input data
+TEST(test_invalid_input) {
+    // Test with inconsistent dimensions
+    std::vector<std::vector<int>> inconsistent_points = {
+        {3, 6}, {17, 15}, {13} // Last point has wrong dimension
+    };
+    
+    try {
+        RangeTree<int, 2> tree(inconsistent_points);
+        test_file << "TEST FAILED: " << __func__ << " Line " << __LINE__ << ": Expected exception for inconsistent dimensions" << std::endl;
+        failed_tests++;
+        return;
+    } catch (const std::invalid_argument&) {
+        passed_assertions++;
+    }
+}
+
+// Test for inverted range boundaries
+TEST(test_inverted_ranges) {
+    std::vector<std::vector<int>> points_2d = {
+        {3, 6}, {17, 15}, {13, 15}, {6, 12}, {9, 1}
+    };
+    
+    RangeTree<int, 2> tree(points_2d);
+    
+    // Test range query with inverted x bounds
+    auto results = tree.rangeSearch({15, 5}, {5, 15});
+    
+    // This should return no results since low > high in x dimension
+    ASSERT_EQUAL(results.size(), 0);
 }
 
 int main() {
-    test_file.open("test_results.txt");
+    test_file.open("range_tree_test_results.txt");
     
     if (!test_file.is_open()) {
-        std::cerr << "Error opening test_results.txt!" << std::endl;
+        std::cerr << "Error opening range_tree_test_results.txt!" << std::endl;
         return 1;
     }
     
-    test_file << "KD Tree Unit Tests" << std::endl;
-    test_file << "=================" << std::endl << std::endl;
+    test_file << "Range Tree Unit Tests" << std::endl;
+    test_file << "=====================" << std::endl << std::endl;
     
     // Run all tests
     RUN_TEST(test_empty_tree);
-    RUN_TEST(test_insert_and_search);
-    RUN_TEST(test_nearest_neighbor_exact_match);
-    RUN_TEST(test_nearest_neighbor_approximate);
-    RUN_TEST(test_range_search);
-    RUN_TEST(test_higher_dimensions);
-    RUN_TEST(test_different_data_types);
+    RUN_TEST(test_1d_range_tree);
+    RUN_TEST(test_2d_range_tree_basic);
+    RUN_TEST(test_2d_range_queries);
+    RUN_TEST(test_range_boundary_conditions);
+    RUN_TEST(test_3d_range_tree);
     RUN_TEST(test_dimension_validation);
+    RUN_TEST(test_different_data_types);
     RUN_TEST(test_large_dataset);
+    RUN_TEST(test_invalid_input);
+    RUN_TEST(test_inverted_ranges);
     
     // Output test summary
     test_file << std::endl;
@@ -299,7 +410,7 @@ int main() {
     
     test_file.close();
     
-    std::cout << "Tests completed. Results saved to test_results.txt" << std::endl;
+    std::cout << "Tests completed. Results saved to range_tree_test_results.txt" << std::endl;
     
     return failed_tests;
 }

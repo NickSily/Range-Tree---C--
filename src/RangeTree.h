@@ -1,3 +1,4 @@
+// RangeTree.h
 #pragma once
 
 #include <vector>
@@ -64,7 +65,7 @@ private:
     
 public:
     RangeTree(const std::vector<std::vector<T>>& points, size_t dim = 0);
-    std::vector<std::vector<T>> rangeSearch(const T& low, const T& high) const;
+    std::vector<std::vector<T>> rangeSearch(const std::vector<T>& low, const std::vector<T>& high) const;
     bool search(const std::vector<T>& point) const;
 };
 
@@ -224,7 +225,7 @@ RangeTree<T, 1>::RangeTree(const std::vector<std::vector<T>>& points, size_t dim
     
     // Validate input points
     for (const auto& point : points) {
-        if (point.size() != 1) {
+        if (point.size() < 1) {
             throw std::invalid_argument("Point dimension does not match tree dimension");
         }
     }
@@ -324,22 +325,30 @@ void RangeTree<T, 1>::rangeSearchDim(
 }
 
 template<typename T>
-std::vector<std::vector<T>> RangeTree<T, 1>::rangeSearch(const T& low, const T& high) const {
+std::vector<std::vector<T>> RangeTree<T, 1>::rangeSearch(const std::vector<T>& low, const std::vector<T>& high) const {
+    if (low.size() < 1 || high.size() < 1) {
+        throw std::invalid_argument("Range dimensions do not match tree dimension");
+    }
+    
     std::vector<std::vector<T>> result;
     if (!root) return result;
     
     // Find results for 1D range
-    rangeSearchDim(root.get(), low, high, result);
+    rangeSearchDim(root.get(), low[0], high[0], result);
     
     return result;
 }
 
 template<typename T>
 bool RangeTree<T, 1>::search(const std::vector<T>& point) const {
-    if (point.size() != 1) {
+    if (point.size() < 1) {
         throw std::invalid_argument("Point dimension does not match tree dimension");
     }
     
+    // Create vector arguments for rangeSearch
+    std::vector<T> low = {point[0]};
+    std::vector<T> high = {point[0]};
+    
     // Use range query with low = high = point's value
-    return !rangeSearch(point[0], point[0]).empty();
+    return !rangeSearch(low, high).empty();
 }

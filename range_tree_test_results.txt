@@ -1,0 +1,19 @@
+Range Tree Unit Tests
+=====================
+
+Running test_empty_tree...
+PASSED
+
+Running test_1d_range_tree...
+PASSED
+
+Running test_2d_range_tree_basic...
+PASSED
+
+Running test_2d_range_queries...
+PASSED
+
+Running test_range_boundary_conditions...
+PASSED
+
+Running test_3d_range_tree...
