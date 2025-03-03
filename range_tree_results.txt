@@ -1,0 +1,4 @@
+Range Tree Test Results
+=======================
+
+Building 2D Range Tree with 20 points...
